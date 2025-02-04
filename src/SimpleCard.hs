@@ -3,6 +3,7 @@
 module SimpleCard where
 
 import Apecs
+-- import SimpleCard (initWorld)
 
 data CardType = Instant
         | Sorcery
@@ -34,7 +35,7 @@ removeCard _ []                 = []
 removeCard cardid (anid:ids) | anid == cardid    = removeCard anid ids
                     | otherwise = anid : removeCard anid ids
 
-data Zone = Hand | Battlefield | Graveyard | Library | Exile
+data Zone = Hand | Battlefield | Graveyard | Library | Exile deriving Show
 
 data Action = ChooseTarget TargetType| CounterTarget | AddMana Int| DrawCards Int
 
@@ -178,13 +179,24 @@ makeWorld "World" [
 
 type System' a = System World a
 main :: IO ()
-main = print "Hi"
+main = do
+    w <- initWorld
+    runWith w setupGame
+
 
 setupGame :: System'()
 setupGame = do
     createZones
-    abasicLand <- newcard basicLand
+    newcard basicLand
     putCardInPlace basicLand.cardID Library Hand
+    c <- cardsonbattlefield
+    debug c
+
+debug :: Show a => a -> System' ()
+debug x = liftIO (print x) 
+
+cardsonbattlefield :: System' [(Entity, Zone)]
+cardsonbattlefield = collect $ \ (AZone zone, Entity x) -> Just (Entity x, zone)
 
 createZones :: System'()
 createZones= do
@@ -218,7 +230,7 @@ createZones= do
         WhichZone Exile,
         CardsinZone []
         )
-newcard :: Card->System'()
+newcard :: Card-> System' ()
 newcard card= do
     newEntity_
         (IsCard,
@@ -237,6 +249,9 @@ playLand land = do
     addCardToPlace land.cardID Battlefield
 --how do i access an entity? because i dont think this is going to work right now -- but the thesis statement is there?
 
+--the only place entities exist is stack/battlefield, gy doesnt exist. library/hand just store Cards. 
+--resolveStack !!
+
 --all three of these effectively should function in sequence to update a card's position, wasn't sure how cmap works 
 --(ie if i could resolve these in sequence with one cmap) 
 --because the documentation seems shockingly vacant
@@ -250,6 +265,7 @@ removeCardFromPlace :: Int->Zone->System'()
 removeCardFromPlace thisid zone = cmap $ \(WhichZone zone, CardsinZone ids) -> CardsinZone (appendcard thisid ids)
 --not sure why 'thisid' and 'zone' are shadowing binding here, i want to make sure the card is of that id and then move it 
 -- not sure how
+-- equalise zone and 
 
 
 -- gameChecks :: System' ()
