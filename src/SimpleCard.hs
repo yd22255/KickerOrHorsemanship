@@ -1,8 +1,10 @@
 {-# LANGUAGE TypeFamilies, FlexibleInstances, MultiParamTypeClasses, OverloadedRecordDot    #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE InstanceSigs #-}
 module SimpleCard where
 
 import Apecs
+import Control.Monad
 -- import SimpleCard (initWorld)
 
 data CardType = Instant
@@ -35,9 +37,10 @@ removeCard _ []                 = []
 removeCard cardid (anid:ids) | anid == cardid    = removeCard anid ids
                     | otherwise = anid : removeCard anid ids
 
-data Zone = Hand | Battlefield | Graveyard | Library | Exile deriving Show
+data Zone = Hand | Battlefield | Graveyard | Library | Exile | Stack deriving Show
 
-data Action = ChooseTarget TargetType| CounterTarget | AddMana Int| DrawCards Int
+data Action = ChooseTarget TargetType| CounterTarget | AddMana Int| DrawCards Int | DoNothing 
+
 
 data Cost = Tap
 
@@ -117,7 +120,8 @@ solRing = Card {
 
 
 
-
+data CurrentMana = CurrentMana Int deriving Show
+instance Component CurrentMana where type Storage CurrentMana = Global CurrentMana
 
 data IsCard = IsCard deriving Show
 instance Component IsCard where type Storage IsCard = Map IsCard
@@ -173,7 +177,7 @@ instance Component CardsinZone where type Storage CardsinZone = Map CardsinZone
 makeWorld "World" [
 
     ''IsCard, ''ACardName, ''ACardType, ''AManaCost, ''AnOnActivate, ''AnOnEvent, ''AnAttributes, ''AZone, ''AnId,
-    ''IsZone, ''TheHand, ''TheGraveyard, ''TheBattlefield, ''TheLibrary, ''TheExile, ''WhichZone, ''CardsinZone
+    ''IsZone, ''TheHand, ''TheGraveyard, ''TheBattlefield, ''TheLibrary, ''TheExile, ''WhichZone, ''CardsinZone, ''CurrentMana
     ]
 --i'm not sure if thehand, thegy, the library etc are necessary, but i put them in to try and make binding easier for cmaps 
 
@@ -187,16 +191,27 @@ main = do
 setupGame :: System'()
 setupGame = do
     createZones
-    newcard basicLand
-    putCardInPlace basicLand.cardID Library Hand
+    createManaBank
+    --putCardInPlace basicLand.cardID Library Hand
     c <- cardsonbattlefield
     debug c
 
 debug :: Show a => a -> System' ()
-debug x = liftIO (print x) 
+debug x = liftIO (print x)
 
-cardsonbattlefield :: System' [(Entity, Zone)]
-cardsonbattlefield = collect $ \ (AZone zone, Entity x) -> Just (Entity x, zone)
+cardsonbattlefield :: System' [Entity]
+cardsonbattlefield = collect $ \ (AZone Battlefield, Entity x) -> Just (Entity x)
+
+cardsonstack :: System' [[(Trigger, Action)]]
+cardsonstack = collect $ \ (AnOnEvent triggeractions, Entity x) -> Just (triggeractions)
+--tried a version of this where it returned the entity as well, but this became somewhat problematic -- not sure if i need to or not just wanted to record it
+
+--do this for cardsonstack, collect their OnResolves, and then loop through that iteratively to resolve the stack
+
+createManaBank :: System'()
+createManaBank = do
+    newEntity_
+        (CurrentMana 0)
 
 createZones :: System'()
 createZones= do
@@ -242,12 +257,67 @@ newcard card= do
         AnAttributes card.attributes,
         AZone card.currentZone
         )
+castnewcard :: Card-> System' ()
+castnewcard card = do
+    newEntity_
+        (IsCard,
+        (ACardName card.cardName,AnId card.cardID),
+        ACardType card.cardType,
+        AManaCost card.manaCost,
+        AnOnActivate card.onActivate,
+        AnOnEvent card.onEvent,
+        AnAttributes card.attributes,
+        AZone Stack
+        )
 
 playLand :: Card->System'()
 playLand land = do
+    newcard land
     putCardInPlace land.cardID Hand Battlefield
     addCardToPlace land.cardID Battlefield
+    removeCardFromPlace land.cardID Hand
+
+castCard :: Card->System'()
+castCard card = do
+    castnewcard card
+--change this to an instantiation model, instantiate it onto the stack
 --how do i access an entity? because i dont think this is going to work right now -- but the thesis statement is there?
+
+resolveStack :: System'()
+resolveStack = do
+    triggeractions<-cardsonstack
+    iterateTriggeractions triggeractions
+
+-- drawcards :: Int->System'()
+-- drawcards 0 = return()
+-- drawcards x = 
+--finding drawcards pretty hard to implement
+
+addmana :: Int->System'()
+addmana x = cmap $ \(CurrentMana mananow) -> CurrentMana (mananow+x)
+
+paymana :: Int->System'()
+paymana x = cmap $ \(CurrentMana mananow) -> CurrentMana (mananow-x)
+
+setmana :: Int->System'()
+setmana x = cmap $ \(CurrentMana mananow) -> CurrentMana x
+
+parseaction :: Action->System'()
+parseaction (DoNothing) = return()
+parseaction (DrawCards x) = drawcards x
+--parseaction CounterTarget: god how on earth am i going to implement counters without a target being passed in? surely the action has to hold the target?
+--parseaction (ChooseTarget target): 
+parseaction (AddMana x) = addmana x
+
+
+iterateTriggeractions :: [[(Trigger,Action)]] -> System'()
+iterateTriggeractions [] = parseaction DoNothing
+iterateTriggeractions [(trigger,action):tas] = Control.Monad.when (trigger == OnResolve) $ parseaction action
+-- iterateTriggeractions [e,[(trigger,action)]:tas] = if trigger = onresolve: pass action into a parsing function which carries it out, then iterateTriggeractions tas
+--i THINK i need to separate oncast and onresolve again, because they're triggered in entirely different circumstances, and it makes a generic parsing function really rough
+--do this recursively? go through, try and resolve their onResolves
+
+--we can clear entities by returning Nothing instead of a component adjustment
 
 --the only place entities exist is stack/battlefield, gy doesnt exist. library/hand just store Cards. 
 --resolveStack !!
