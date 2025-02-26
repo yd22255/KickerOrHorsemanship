@@ -1,9 +1,18 @@
 {-# LANGUAGE TypeFamilies, FlexibleInstances, MultiParamTypeClasses, OverloadedRecordDot    #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 module SimpleCard where
 
 import Apecs
+import Data.List
+import Control.Monad.IO.Class
+import Control.Monad
+import Apecs.Core
 
 -- import SimpleCard (initWorld)
 
@@ -23,6 +32,8 @@ data Card =
         manaCost::Int,
         onActivate :: [(Cost,Action)],
         onEvent :: [(Trigger, Action)],
+        onResolve :: [Action],
+        possibleTargets :: Maybe TargetType,
         attributes :: [Attribute],
         currentZone :: Zone
     } deriving Show
@@ -32,26 +43,28 @@ appendcard :: Card->[Card]->[Card]
 appendcard thiscard cards = cards ++ [thiscard]
 --i think this blue line is wrong but correct me if thats not the case
 
-removeCard :: Eq a => a -> [a] -> [a]
-removeCard _ []                 = []
-removeCard cardid (anid:ids) | anid == cardid    = removeCard anid ids
-                    | otherwise = anid : removeCard anid ids
-
 data Zone = Hand | Battlefield | Graveyard | Library | Exile | Stack | None deriving Show
 
-data Action = ChooseTarget TargetType| CounterTarget | AddMana Int| DrawCards Int | DoNothing | Then Action Action deriving Show
+data Action = GoToBattlefield| CounterTarget | DestroyTarget| AddMana Int| DrawCards Int | DoNothing | Then Action Action deriving Show
 
+data Colour = White | Blue | Black | Red | Green | Colourless | And Colour Colour
 
 data Cost = Tap deriving Show
 
-data Trigger = OnCast | OnResolve deriving Show
+data Trigger = Landfall | Enters deriving Show
 
-data TargetType = Spell deriving Show
+data TargetType = Spell | Permanent deriving (Show, Eq)
 
 data Attribute =
     BasePower Int
     | BaseToughness Int
     deriving Show
+
+data AbilityAttribute =
+    Source Entity
+    | SourceColour Colour
+    | SourceCardType CardType
+
 
 basicLand :: Card
 basicLand = Card {
@@ -60,6 +73,8 @@ basicLand = Card {
     manaCost=0,
     onActivate = [(Tap,AddMana 1)],
     onEvent = [],
+    onResolve = [],
+    possibleTargets = Nothing,
     attributes = [],
     currentZone = None
 }
@@ -70,7 +85,9 @@ counterspell = Card {
     cardType = Instant,
     manaCost=2,
     onActivate = [],
-    onEvent = [(OnCast, ChooseTarget Spell ), (OnResolve, CounterTarget)],
+    onEvent = [],
+    onResolve = [CounterTarget],
+    possibleTargets = Just Spell,
     attributes = [],
     currentZone = None
 }
@@ -81,7 +98,9 @@ divination = Card {
     cardType = Sorcery,
     manaCost=3,
     onActivate = [],
-    onEvent = [(OnResolve, DrawCards 2)],
+    onEvent = [],
+    onResolve = [(DrawCards 2)],
+    possibleTargets = Nothing,
     attributes = [],
     currentZone = None
 }
@@ -93,6 +112,8 @@ basicGuy = Card {
     manaCost=0,
     onActivate = [],
     onEvent = [],
+    onResolve = [GoToBattlefield],
+    possibleTargets = Nothing,
     attributes = [BasePower 1, BaseToughness 1],
     currentZone = None
 
@@ -105,18 +126,12 @@ solRing = Card {
     manaCost=1,
     onActivate = [(Tap, AddMana 2)],
     onEvent = [],
+    onResolve = [GoToBattlefield],
+    possibleTargets = Nothing,
     attributes = [],
     currentZone = None
 
 }
-
---use apecs stuff, look at apecs github and jess boidemic project
---generate the land as an entity
---put it in a zone called Hand
---put it on the battlefield
---if possible, tap it for mana
-
-
 
 newtype CurrentMana = CurrentMana Int deriving (Show)
 instance Component CurrentMana where type Storage CurrentMana = Unique CurrentMana
@@ -124,7 +139,19 @@ instance Component CurrentMana where type Storage CurrentMana = Unique CurrentMa
 
 data IsCard = IsCard deriving Show
 instance Component IsCard where type Storage IsCard = Map IsCard
---should the zones be globals instead??
+
+data IsAbility = IsAbility deriving Show
+instance Component IsAbility where type Storage IsAbility = Map IsAbility
+
+newtype AbilityCost = AbilityCost Cost deriving Show
+instance Component AbilityCost where type Storage AbilityCost = Map AbilityCost
+
+newtype AbilityEffect = AbilityEffect Action deriving Show
+instance Component AbilityEffect where type Storage AbilityEffect = Map AbilityEffect
+
+newtype AbilityAttributes = AbilityAttributes Entity deriving Show
+instance Component AbilityAttributes where type Storage AbilityAttributes = Map AbilityAttributes
+
 data TheLibrary = TheLibrary deriving Show
 instance Component TheLibrary where type Storage TheLibrary = Unique TheLibrary
 
@@ -170,16 +197,15 @@ instance Component CardsinZone where type Storage CardsinZone = Map CardsinZone
 newtype EntitiesinZone = EntitiesinZone [Entity]
 instance Component EntitiesinZone where type Storage EntitiesinZone = Map EntitiesinZone
 
-newtype CurrentTargets = CurrentTargets [Entity] -- needs the ability to target Entities as well: another type???
+newtype CurrentTargets = CurrentTargets [Entity]
 instance Component CurrentTargets where type Storage CurrentTargets = Map CurrentTargets
 
 makeWorld "World" [
 
     ''IsCard, ''ACardName, ''ACardType, ''AManaCost, ''AnOnActivate, ''AnOnEvent, ''AnAttributes, ''AZone,
  ''TheHand, ''TheGraveyard, ''TheBattlefield, ''TheStack, ''TheLibrary, ''TheExile, ''CardsinZone, ''CurrentTargets, ''CurrentMana,
-    ''EntitiesinZone
+    ''EntitiesinZone, ''AbilityAttributes, ''AbilityEffect, ''AbilityCost, ''IsAbility
     ]
---i'm not sure if thehand, thegy, the library etc are necessary, but i put them in to try and make binding easier for cmaps 
 
 type System' a = System World a
 main :: IO ()
@@ -198,13 +224,33 @@ setupGame = do
     -- putCardInPlace basicGuy None Hand
     --putCardInPlace counterspell None Library
     populateLibrary [basicLand, basicGuy]
-    drawcards 3
-    c<-cardsinhand
-    debug c
+    castCard basicGuy
+    castCard basicGuy
+    castCard basicGuy
+    castCard basicGuy
+    cs<-cardsonstack
+
+    forM_ (zip [1 ..] cs) $ \(ix, c) -> do
+        ACardName name <- getComponent c
+        liftIO (print (show ix ++ ". " ++ name))
+
+    target <- obtainInput ("pick one")
+    if target > length cs
+        then return ()
+        else do
+            let entity = cs !! target
+            debug entity
+            return ()
 
 debug :: Show a => a -> System' ()
 debug x = liftIO (print x)
 
+cdebug :: (Show a, Get w m c, Members w m c, MonadIO m)
+       => (c -> a) -> SystemT w m ()
+cdebug f = cmapM_ (\x -> liftIO (print (f x)))
+
+getComponent :: forall c. (Has World IO c, ExplGet IO (Storage c)) => Entity -> System' c
+getComponent entity = get entity
 
 cardsonbattlefield :: System' [[Entity]]
 cardsonbattlefield = collect $ \ (TheBattlefield, EntitiesinZone entities) -> Just entities
@@ -213,16 +259,24 @@ cardsonbattlefield = collect $ \ (TheBattlefield, EntitiesinZone entities) -> Ju
 cardsinhand :: System' [[Card]]
 cardsinhand = collect $ \ (TheHand, CardsinZone cards) -> Just cards
 
-cardsinlib :: System' [[Card]]
-cardsinlib = collect $ \ (TheLibrary, CardsinZone cards) -> Just cards
+cardsinlib :: System' [Card]
+cardsinlib = do
+    cil<-collect $ \ (TheLibrary, CardsinZone cards) -> Just cards
+    return (concat cil)
 
-cardsonstack :: System' [[Entity]]
-cardsonstack = collect $ \ (TheStack, EntitiesinZone entities) -> Just entities
+cardsonstack :: System' [Entity]
+cardsonstack = do
+    css <- collect $ \ (TheStack, EntitiesinZone entities) -> Just entities
+    return (concat css)
 
-effectsonstack :: System' [(String,[(Trigger, Action)])]
-effectsonstack = collect $ \ (AnOnEvent triggeractions, AZone Stack, ACardName name) -> Just (name,triggeractions)
---tried a version of this where it returned the entity as well, but this became somewhat problematic -- not sure if i need to or not just wanted to record it
-    --becoming maybe necessary to return entity as well, since I need to grab the targets for certain effects -- but equally thats not just in the entity
+effectsonstack :: System' [(Entity,[(Trigger, Action)])]
+effectsonstack = do
+    theents<-collect $ \ (TheStack, EntitiesinZone entities) -> Just (entities)
+    forM (concat theents) $ \(e) -> do
+        AnOnEvent triggeraction<- getComponent e
+        return (e, triggeraction)
+
+--I need to get specifically the entity that is having its triggeractions collected somehow
 
 createManaBank :: System'()
 createManaBank = do
@@ -278,9 +332,9 @@ newcard card= do
         CurrentTargets [],
         AZone Battlefield
         )
-castnewcard :: Card-> System' ()
-castnewcard card = do
-    newEntity_
+castnewcard :: Card->[Entity]-> System' Entity
+castnewcard card targets= do
+    newEntity
         (IsCard,
         ACardName card.cardName,
         ACardType card.cardType,
@@ -288,7 +342,7 @@ castnewcard card = do
         (AnOnActivate card.onActivate,
         AnOnEvent card.onEvent),
         AnAttributes card.attributes,
-        CurrentTargets [],
+        CurrentTargets targets,
         AZone Stack
         )
 
@@ -300,25 +354,37 @@ playLand land = do
 
 castCard :: Card->System'()
 castCard card = do
-    castnewcard card
+    case card.possibleTargets of 
+        Nothing -> do
+            entity<-castnewcard card []
+            cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (entity : stackcards)
+            
+        Just targetType -> do
+            target<-choosetarget targetType
+            entity<-castnewcard card [target]
+            cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (entity : stackcards)
+            
+    
+
     --resolve its onCast trigger
 
 resolveStack :: System'()
 resolveStack = do
-    triggeractions<-effectsonstack    
-    resolvingTriggeractions triggeractions
+    triggeractions<-effectsonstack
+    return()
+    --resolvingTriggeractions triggeractions
 
 drawcard :: System'()
-drawcard = cmapM $ \(TheLibrary, CardsinZone cards) -> 
+drawcard = cmapM $ \(TheLibrary, CardsinZone cards) ->
     case cards of
-        [] -> return(CardsinZone cards)
+        [] -> return (CardsinZone cards)
         (card : cards') -> do
-            cmap $ \ (TheHand, CardsinZone handcards) -> CardsinZone(appendcard card handcards)
+            cmap $ \ (TheHand, CardsinZone handcards) -> CardsinZone (appendcard card handcards)
             return (CardsinZone cards')
 
 drawcards :: Int->System'()
-drawcards 0 = return()
-drawcards x = do 
+drawcards 0 = return ()
+drawcards x = do
     drawcard
     drawcards (x-1)
 
@@ -331,55 +397,121 @@ paymana x = cmap $ \(CurrentMana mananow) -> CurrentMana (mananow-x)
 setmana :: Int->System'()
 setmana x = cmap $ \(CurrentMana mananow) -> CurrentMana x
 
-obtainInput :: String->SystemT World IO String --this might come back to bite me?
+obtainInput :: Read a => String->SystemT World IO a --this might come back to bite me?
 obtainInput prompt = do
-    liftIO(putStrLn prompt)
-    target<-liftIO(getLine)
-    return target
+    liftIO (putStrLn prompt)
+    target<-liftIO (getLine)
+    return (read target)
 
-
-findtarget :: String->System' [[Entity]]
-findtarget targetname = collect $ \ (TheStack, EntitiesinZone entities) -> entities
+findtarget :: TargetType->System' [[Entity]]
+findtarget targetType= collect $ \ (TheStack, EntitiesinZone entities) -> Just (entities)
+findtarget Permanent = collect $ \ (TheBattlefield, EntitiesinZone entities) -> Just (entities)
 --i know for a fact there's a way to filter collect but the syntax is being annoying and it's 2am
 
 
-choosetarget :: (TargetType, String)->System'()
+choosetarget :: TargetType->System' Entity
 --do run a function that prompts the user to target something, and feed it back into this 
-choosetarget (targettype, name) = do
-    targetname<-obtainInput "select a target" --("hello")
-    target<- findtarget targetname 
-    cmapIf (\(AZone Stack, ACardName thename ) -> name == thename)
-        (\(ACardName thename, CurrentTargets cards)->CurrentTargets target)
-    debug(targetname)
--- not sure how to look at choosetarget here, because it's in some way associating the target with the entity, 
--- but idk whether I want to associate that with the capital E Entity or not
+choosetarget (targetType) = do
+    targets<- (findtarget (targetType))
+    getUserChoice (concat targets) (\target -> do
+            ACardName name <- getComponent target
+            return name
+        )
 
-parseaction :: (Action,String)->System'()
-parseaction (DoNothing, _) = return()
+getUserChoice :: [a] -> (a -> System' String) -> System' a
+getUserChoice options display = do
+    forM_ (zip [1 ..] options) $ \(ix, option) -> do
+        optionText <- display option
+        liftIO (print (show ix ++ ". " ++ optionText))
+    target <- obtainInput ("pick one")
+    let option = options !! target
+    if target > length options
+        then do
+            liftIO (putStrLn "invalid option!")
+            getUserChoice options display
+        else do
+            return option
+
+-- these have the same issue as above, can't convert system' string to String
+
+getTargets :: Entity->System'[Entity]
+getTargets card = do
+    CurrentTargets targets <- getComponent card
+    return targets
+
+getName :: Entity->System'(String)
+getName card = do
+    ACardName targets <- getComponent card
+    return targets
+
+deletethese :: [Entity]->[Entity]->[Entity]
+deletethese targets list = foldr delete targets list--do
+--     forM (targets) $ \(target) -> do
+--         delete target list
+
+
+counterTargets :: Entity->System'()
+counterTargets card = do
+    cardtargets<-getTargets card
+    cmapM $ \(TheStack, EntitiesinZone cards) ->
+        case cards of
+            [] -> return ()
+            (thiscard : cards') -> do
+                cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (deletethese cardtargets stackcards)
+
+destroyTargets :: Entity->System'()
+destroyTargets card = do
+    cardtargets<-getTargets card
+    cmapM $ \(TheBattlefield, EntitiesinZone cards) ->
+        case cards of
+            [] -> return ()
+            (thiscard : cards') -> do
+                cmap $ \ (TheBattlefield, EntitiesinZone stackcards) -> EntitiesinZone (deletethese cardtargets stackcards)
+-- not going to work right now as can't track if individual cardtargets are in cards' -> a) loop through each cardtarget and b) delete them individually           
+
+
+--currently only works on one target, ig just do this multiple times for each target?
+
+parseaction :: (Action,Entity)->System'()
+parseaction (DoNothing, _) = return ()
 parseaction (DrawCards x, _) = drawcards x
---parseaction (CounterTarget, name): counterspell name -> take the currenttargets of name, then cmap to remove those entities from the stack
-parseaction (ChooseTarget target, name) = choosetarget (target, name)
+parseaction (DestroyTarget, entity)= destroyTargets entity 
+parseaction (CounterTarget, entity)=counterTargets entity 
 parseaction (AddMana x, _) = addmana x
-parseaction (Then x y, z) = do 
+parseaction (Then x y, z) = do
     parseaction (x,z)
-    parseaction (y,z) 
+    parseaction (y,z)
 
 --[(Entity,[(Trigger,Action)])]
-resolvingTriggeractions :: [(String,[(Trigger,Action)])] -> System'()
-resolvingTriggeractions [] = parseaction (DoNothing,"")
-resolvingTriggeractions ((name,[(OnResolve,action)]):tas) = do
-    parseaction (action,name)
-    resolvingTriggeractions tas
-resolvingTriggeractions ((name,[(OnCast,_)]):tas) = do
-    parseaction (DoNothing,name) 
-    resolvingTriggeractions tas
-resolvingTriggeractions _ = parseaction (DoNothing,"")
+-- resolvingTriggeractions :: [(Entity,[(Trigger,Action)])] -> System'()
+-- resolvingTriggeractions [] = parseaction (DoNothing,0)
+-- resolvingTriggeractions ((name,[(OnResolve,action)]):tas) = do
+--     parseaction (action,name)
+--     resolvingTriggeractions tas
+-- resolvingTriggeractions ((name,[(OnCast,_)]):tas) = do
+--     parseaction (DoNothing,name)
+--     resolvingTriggeractions tas
+-- resolvingTriggeractions _ = parseaction (DoNothing,0)
+
+--we've differentiated onResolves from triggeractions, they resolve differently i think
+
+-- getOnActivates :: Entity -> [(Cost,Action)]
+-- getOnActivates card = 
+--   let AnOnActivate abilities = get card
+--    in abilities
+
+-- activateEffect :: Entity->System'()
+-- activateEffect card = do 
+-- effects<-getOnActivates card
+-- whicheffect <- obtainInput "which effect to use?"
+-- make effects their own entity, use the 1... from up top to cycle through them
+
+
 
 -- iterateTriggeractions [e,[(trigger,action)]:tas] = if trigger = onresolve: pass action into a parsing function which carries it out, then iterateTriggeractions tas
 --i THINK i need to separate oncast and onresolve again, because they're triggered in entirely different circumstances, and it makes a generic parsing function really rough
 --do this recursively? go through, try and resolve their onResolves
 
---destroyPermanent :: Entity->System'()
 --we can clear entities by returning Nothing instead of a component adjustment
 --but how exactly am i going to get that specific targeted entity? 
 
@@ -402,7 +534,6 @@ resolvingTriggeractions _ = parseaction (DoNothing,"")
 -- removeCardFromPlace card zone = cmapIf (\(WhichZone thezone)->thezone==zone) 
 --                                 (\(WhichZone thezone, CardsinZone cards)->CardsinZone (removeCard card cards))
 
--- FIGURE OUT HOW TO EQUALIZE THEZONE AND ZONE HERE!! More generally how do we set up Eq-able things
 
 
 -- gameChecks :: System' ()
