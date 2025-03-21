@@ -1,0 +1,62 @@
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSarray-0.5.4.0-ghc9.4.8.dylib:
+  hash: e72b9245a4462414ec031db440d78ac2652267d55f876c23b07de49885560ec1
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSbase-4.17.2.1-ghc9.4.8.dylib:
+  hash: 16bd2dac9032a6d6006b1b40dcd404b0a40185fc9f3a04340ce37d4ae1a4602a
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSdeepseq-1.4.8.0-ghc9.4.8.dylib:
+  hash: 2c65cad7ebef805d41cafbdddd8cea62fb63632c4be1de6a97185e1ce899925f
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSghc-bignum-1.3-ghc9.4.8.dylib:
+  hash: b5a6374ed90b3b28d3225c187016630bf47fd5100d45987025099afe577f5600
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSghc-boot-th-9.4.8-ghc9.4.8.dylib:
+  hash: 1075f7166c958d4e4d57ed95f5b4e44a3797d0edfabf8047a9c7a6279089a380
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSghc-prim-0.9.1-ghc9.4.8.dylib:
+  hash: 118efb4ed4d14c3a4d57fa42b3ff8c717faa306466e9dc77f42eee1d6fc6acea
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSpretty-1.1.3.6-ghc9.4.8.dylib:
+  hash: 3de3d867de336356e0398430722adb0e61a3b50587160206b97b1b6a25faca41
+? /Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHStemplate-haskell-2.19.0.0-ghc9.4.8.dylib
+: hash: 96ef44c65d626684a29f7092eaf6a410d7050f5d6965691673930ad0b49b82e5
+? /Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/libHStransformers-0.5.6.2-ghc9.4.8.dylib
+: hash: 597ec94083001ce8699da3396f56a3ff27e2cb90e26d7af02be0b844a61841f8
+/Users/toby/.stack/programs/aarch64-osx/ghc-9.4.8/lib/ghc-9.4.8/lib/aarch64-osx-ghc-9.4.8/rts-1.0.2/include/ghcversion.h:
+  hash: 4bc88722407a89d1efbfa9c116cd4017af6ea3ff746643032b96cef62782f5dd
+? /Users/toby/.stack/snapshots/aarch64-osx/73202a1b5151b3ddc43ad0381a5bd8bea2e987293438ec507632a94817aef3ec/9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSprimitive-0.8.0.0-DOq08qccxJQDiY3mViZQFk-ghc9.4.8.dylib
+: hash: bf888bcb0e96a420dad5fdc60dde33f349e03c419b4400319ee1b69d55f2dcf7
+? /Users/toby/.stack/snapshots/aarch64-osx/73202a1b5151b3ddc43ad0381a5bd8bea2e987293438ec507632a94817aef3ec/9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSvector-0.13.1.0-DaP9Gsy2yQ86blThQ6OwA6-ghc9.4.8.dylib
+: hash: d612c90969ac3b70e3d1d927c5540bfb931aec09dd039f97696af9f4b5766ccc
+? /Users/toby/.stack/snapshots/aarch64-osx/73202a1b5151b3ddc43ad0381a5bd8bea2e987293438ec507632a94817aef3ec/9.4.8/lib/aarch64-osx-ghc-9.4.8/libHSvector-stream-0.1.0.0-3lCfHZluihABooYlJXwfC1-ghc9.4.8.dylib
+: hash: 8458724251e29ae3fa0ebbcd3b190d7d2c5eb7ac8015716b8da5a1e84a111e0b
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/.stack-work/dist/aarch64-osx/ghc-9.4.8/build/Apecs/THTuples.dyn_o:
+  hash: 9563ddb08a91d6924dedbac2bde1af52ac217ffc33a5917fe778f519b587898d
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/.stack-work/dist/aarch64-osx/ghc-9.4.8/build/autogen/cabal_macros.h:
+  hash: 601783b7283f02dc7de989b186f9da05575d80c31614b8292f2bd5c4c5cd88f8
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/CHANGELOG.md:
+  hash: 0b2336c34e0ff3157e6afcee25ff96e7e25231878c204ab0785c9b3f68c8dcb7
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/README.md:
+  hash: ee1577ef5df79d8fb374133c0d5f9f8abf70df6977616d265ed18a6807d0907a
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/apecs.cabal:
+  hash: 983fe81336e2a3229c55de174f43c32d6b74a17f7fee6fbe2554bebffcd2d332
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs.hs:
+  hash: 3b4ac227a36dea2b4378e985e41d3ce696210d9b505c0fc2348b955f013a7067
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Components.hs:
+  hash: 0ef6b72c7d30b2d0dff5f13dce1eeaae4f9fa7975b53c98676a2c7d4d88f746b
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Core.hs:
+  hash: 5f97d00b85e4b60387c142c8d26932f1ca8971ac7424c255b9c31e6ef6c8ac3c
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Experimental/Children.hs:
+  hash: 7c93b0557f64f617fd8ada224321ec243de99e839f69b319a87f5654e1486dd1
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Experimental/Components.hs:
+  hash: 9a0587b452b526718bf6df88600a5c722ed3b439fee79e84760f17531eb18580
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Experimental/Reactive.hs:
+  hash: 34cd694d120a7e4601b928b258369f6d2a204860a0d9e8e40f6f80e6d9bfb983
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Experimental/Stores.hs:
+  hash: 663de6e6a140a98f8efae4af98b3afcd29073f91d79da6dc8448026326417f2e
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Experimental/Util.hs:
+  hash: 828a49eb3f3a25c9d994f96d0aee02108f7f48766a88c05924d67a5928b09aee
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Stores.hs:
+  hash: bb093617be45b53ea0fea3ceccf47ea6ed9269159731e7cea64ea8853bab8b69
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/System.hs:
+  hash: 9616b39030a4a92a0bea17ec308c980dceae8b533ee9a8616fe78343240292c0
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/TH.hs:
+  hash: 280125d147a9128fb07543e86851cfd0eea4c610eb9557196982bb11e9096744
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/THTuples.hs:
+  hash: 4e3e0182546079887c75ff77dd77928ac63362319282a90b0d20058864d7d152
+/Users/toby/KickerOrHorsemanship/apecs-0.9.6/src/Apecs/Util.hs:
+  hash: d814981f564a229d084b8d3587fc67cf5b138c5731ef50552ba217a9077b175e
