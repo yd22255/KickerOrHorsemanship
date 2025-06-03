@@ -75,6 +75,7 @@ manamorphose = Card {
     manaCost=2,
     onActivate = [],
     onEvent = [],
+    additcost = Nothing,
     onResolve = [(Then (AddMana 2) (DrawCards 1))],
     possibleTargets = Nothing,
     attributes = [],
@@ -85,6 +86,7 @@ test5 ::System'()
 test5 = do
     testSetup
     liftIO(print("this is test 5: Resolving the Stack"))
+    addmana 3
     playLand basicLand
     addmana 1
     bg<-castnewcard basicGuy []
@@ -172,11 +174,26 @@ test9= do
     activateAbility sr
     showStack
     resolveEffect All
-    --TODO: it literally does not make sense that this test passes, the effect resolves as intended but it never seems to go on the stack????
     liftIO(print("current mana: (should be 2)"))
     cmapM $ \ (CurrentMana cm)->liftIO(print(cm))
     
 --test that activated abilities will activate and resolve
+
+-- castcardx :: Int->System'()
+-- castcardx 0 = return()
+-- castcardx x = do
+--     testSetup
+--     bg<-castnewcard basicGuy []
+--     cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (bg : stackcards)
+--     resolveEffect All
+--     castcardx (x-1)
+
+-- test10 :: System'()
+-- test10= do
+--     testSetup
+--     liftIO(print("this is test 10: Scute Swarm"))
+--     castcardx 10
+--     showGS
 
 runtest :: System'()->IO()
 runtest test = do
