@@ -22,28 +22,6 @@ import Control.Monad
 import Apecs.Core
 
 import Text.Read (readMaybe)
--- import SimpleCard (initWorld)
-
---i have tried to make coloured mana work and it did not go well :')
-
---TODO: 
- -- options for testing : unit tests-> just do your tests via manual function inputs in main
- --                                 -> Probably needs some way of recording values/inputs during the process, debug trace?
-  -- probably unit testing, design a suite of sampled interactions
-  -- test.hs, each function is its own set of unit tests
-
-  --outline of report for steven tomorrow
-  --ask what he's looking for in a report like this
-
---state-based actions? half done, most of the sba's don't really work bc no combat/tokens -- it's a primarily trigger-based system
-
--- FUTURE WORK what should i do when certain 'the game works a different way' effects are in play, e.g. Rest In Peace
- -- current plan is to use a flag of some kind. alternative is to check each time on sendcardstogy but that seems somewhat inefficient
-
---'what code did i have to add to adapt a new thing'
---easy extension to match mtg's ever-expanding subset of cards can be a metric of success
---possible future work in the evaluation -> also whether it's a fair test of ecs, evaluate the model -- what it should have/should not have
-
 
 data CardType = Instant
         | Sorcery
@@ -61,6 +39,7 @@ data Card =
         manaCost::Int,
         onActivate :: [(Cost, Maybe TargetType, Action,IsManaAbility)],
         onEvent :: [(Trigger, Maybe TargetType, Action)],
+        additcost :: Maybe Cost,
         onResolve :: [Action],
         possibleTargets :: Maybe TargetType,
         attributes :: [Attribute],
@@ -77,7 +56,7 @@ data Action = GoToBattlefield| CounterTarget | DestroyTarget| AddMana Int| DrawC
 
 data Colour = White | Blue | Black | Red | Green | Colourless | And Colour Colour deriving (Show,Eq)
 
-data Cost = Tap | Free | PayLife Int deriving (Show,Eq)
+data Cost = Tap | Free | PayLife Int | Discard Int deriving (Show,Eq)
 
 data ManaCost = ManaColour Colour Int | Generic Int | Or ManaCost ManaCost | Plus ManaCost ManaCost deriving (Show,Eq)
 --manapool can't have Or, maybe tuple?
@@ -88,13 +67,12 @@ type IsManaAbility = Bool
 
 data Trigger = ThisEnters [Attribute] | WhenCast [Attribute] | PermanentETB [Attribute] | SpellCast [Attribute] | ThisDies [Attribute] | PermanentLeaves [Attribute] | PermanentDies [ Attribute] | PermanentExiled [Attribute] deriving (Show,Eq)
 --trigger and associated attributes e.g. PermanentEnters as a 
---talk about trigger tradeoff vs having individual landfall, blueenters, whencast, etc -> infinitely expanding series of possible triggers
 
 data TargetType = Spell | Permanent | CreaturePermanent | CreatureSpell | TriggeredAbility | ActivatedAbility deriving (Show, Eq)
 
 data Keyword = FirstStrike | DoubleStrike | Menace | Defender | Vigilance | Trample |
- Lifelink | Deathtouch | Haste | Flash | Flashback | Flying | Reach |
-  Hexproof | Ward Int| Kicker| Indestructible deriving (Show, Eq)
+ Lifelink | Deathtouch | Haste | Flash  | Flying | Reach |
+  Hexproof | Ward Int| Indestructible deriving (Show, Eq)
   --created before combat was abstracted away, vast majority of these can't be implemented under the current framework.
 
 data StateofGame = Open | Closed
@@ -124,6 +102,7 @@ basicLand = Card {
     manaCost=0,
     onActivate = [(Tap, Nothing, AddMana 1,True)], --TODO: technically this isn't how mana abilities work, i dont think its that hard of a change but it's late rn
     onEvent = [],
+    additcost = Nothing,
     onResolve = [],
     possibleTargets = Nothing,
     attributes = [CardType Land, Tapped False],
@@ -137,6 +116,7 @@ counterspell = Card {
     manaCost=2,
     onActivate = [],
     onEvent = [],
+    additcost = Nothing,
     onResolve = [CounterTarget],
     possibleTargets = Just Spell,
     attributes = [CardType Instant, Colour Blue],
@@ -150,6 +130,7 @@ divination = Card {
     manaCost=3,
     onActivate = [],
     onEvent = [],
+    additcost = Nothing,
     onResolve = [(DrawCards 2)],
     possibleTargets = Nothing,
     attributes = [CardType Sorcery],
@@ -163,6 +144,7 @@ vindicate = Card {
     manaCost=3,
     onActivate = [],
     onEvent = [],
+    additcost = Nothing,
     onResolve = [(DestroyTarget)],
     possibleTargets = Just Permanent,
     attributes = [CardType Instant],
@@ -176,6 +158,7 @@ basicGuy = Card {
     manaCost=0,
     onActivate = [],
     onEvent = [],
+    additcost = Nothing,
     onResolve = [GoToBattlefield],
     possibleTargets = Nothing,
     attributes = [CardType Artifact,CardType Creature, BasePower 1, BaseToughness 1, Tapped False],
@@ -189,6 +172,7 @@ solRing = Card {
     manaCost=1,
     onActivate = [(Tap, Nothing, AddMana 2,True)],
     onEvent = [],
+    additcost = Nothing,
     onResolve = [GoToBattlefield],
     possibleTargets = Nothing,
     attributes = [CardType Artifact, Tapped False],
@@ -203,6 +187,7 @@ lotusCobra = Card {
     manaCost=2,
     onActivate = [],
     onEvent = [(PermanentETB [CardType Land],Nothing,AddMana 1)],
+    additcost = Nothing,
     onResolve = [GoToBattlefield],
     possibleTargets = Nothing,
     attributes = [CardType Creature, Tapped False, BasePower 2, BaseToughness 1],
@@ -279,6 +264,16 @@ instance Component SomeKeywords where type Storage SomeKeywords = Map SomeKeywor
 newtype AttCardType = AttCardType CardType deriving Show
 instance Component AttCardType where type Storage AttCardType = Map AttCardType
 
+data HasFlash = HasFlash deriving Show
+instance Component HasFlash where type Storage HasFlash = Map HasFlash
+data HasFirstStrike = HasFirstStrike deriving Show
+instance Component HasFirstStrike where type Storage HasFirstStrike = Map HasFirstStrike
+data HasHexproof = HasHexproof deriving Show
+instance Component HasHexproof where type Storage HasHexproof = Map HasHexproof
+data HasIndestructible = HasIndestructible deriving Show
+instance Component HasIndestructible where type Storage HasIndestructible = Map HasIndestructible
+newtype HasWard = HasWard Int deriving Show
+instance Component HasWard where type Storage HasWard = Map HasWard
 
 newtype AnOnActivate = AnOnActivate [(Cost,Maybe TargetType, Action,IsManaAbility)]
 instance Component AnOnActivate where type Storage AnOnActivate = Map AnOnActivate
@@ -318,7 +313,8 @@ makeWorld "World" [
     ''IsCard, ''ACardName, ''ACardType, ''AManaCost, ''AnOnActivate, ''AnOnEvent, ''AnAttributes, ''AZone, ''AnOnResolve,
  ''TheHand, ''TheGraveyard, ''TheBattlefield, ''TheStack, ''TheLibrary, ''TheExile, ''CardsinZone, ''CurrentTargets, ''CurrentMana,
     ''EntitiesinZone, ''AbilityAttributes, ''AbilityEffect, ''AbilityCost, ''IsAbility, ''APower,''AToughness,''AColour, ''AttCardType,
-    ''SomeKeywords,''IsTapped, ''LandsPlayed, ''LandsPerTurn, ''IsToken, ''PlayerLP
+    ''SomeKeywords,''IsTapped, ''LandsPlayed, ''LandsPerTurn, ''IsToken, ''PlayerLP,
+    ''HasFlash,''HasHexproof, ''HasIndestructible, ''HasWard
     ]
 
 type System' a = System World a
@@ -336,13 +332,20 @@ main = do
     runWith w setupGame
 --world creator, running the setup function inside a new world.
 
+castcardx :: Int->System'()
+castcardx 0 = return ()
+castcardx x = do
+    lc<-playnewcard lotusCobra
+    castcardx (x-1)
 
 setupGame :: System'()
 setupGame = do
     createZones
     createGameState
+    castcardx 300
     populateLibrary [basicLand, basicLand, basicLand, divination, basicGuy, counterspell, vindicate ]
     drawcards 4
+    showGS
     abilityorcast Open
 --the baseline setup function to create a standard, interactive game. 
 
@@ -403,7 +406,7 @@ createZones= do
     newEntity_
         (
         TheGraveyard,
-        CardsinZone []
+        EntitiesinZone []
         )
     newEntity_
         (TheLibrary,
@@ -449,7 +452,14 @@ playnewcard card= do
         )
     cmap $ \ (TheBattlefield, EntitiesinZone ents)->EntitiesinZone (ent : ents)
     forM_ card.attributes $ \(attribute) ->
+        case attribute of
+            Keywords keywordlist->
+                forM_ keywordlist $ \(keyword) ->
+                    keywordtocomponent ent keyword
+            _->
                     attributetocomponent ent attribute
+            
+
     return (ent)
 
 
@@ -468,9 +478,36 @@ castnewcard card targets= do
         AZone Stack
         )
     forM_ card.attributes $ \(attribute) ->
+        case attribute of
+            Keywords keywordlist->
+                forM_ keywordlist $ \(keyword) ->
+                    keywordtocomponent ent keyword
+            _->
                     attributetocomponent ent attribute
     return (ent)
 
+keywordtocomponent :: Entity->Keyword->System'()
+keywordtocomponent ent keyword =
+    case keyword of
+        Flash -> set ent (HasFlash)
+        Hexproof -> set ent (HasHexproof)
+        Indestructible -> set ent (HasIndestructible)
+        Ward x -> set ent (HasWard x)
+        _->return ()
+        -- Flying -> set ent (HasFlying)
+        -- FirstStrike -> set ent (HasFirstStrike)
+        -- DoubleStrike -> set ent (HasDoubleStrike)
+        -- Menace -> set ent (HasMenace)
+        -- Vigilance -> set ent (HasVigilance)
+        -- Defender -> set ent (HasDefender)
+        -- Trample -> set ent (HasTrample)
+        -- Haste -> set ent (HasHaste)
+        -- Deathtouch -> set ent (HasDeathtouch)
+        -- Reach -> set ent (HasReach)
+        -- Lifelink -> set ent (HasLifelink)
+        --removed as combat abstracted
+--the beginnings of an overhaul to the keywords system that was not completed in time for full applicability.
+--Flash, Hexproof and Indestructible were implemented in this way, however. 
 
 
 attributetocomponent :: Entity->Attribute->System'()
@@ -485,15 +522,12 @@ attributetocomponent ent attribute=
         _ -> return ()
 
 putabilityonstack :: Action->[Entity]->System' Entity
-putabilityonstack resolve targets = do --do i want the resolution effect in here?
-    --AnAttributes atts<- getComponent entity
+putabilityonstack resolve targets = do 
     newEntity
         (IsAbility,
         AnOnResolve [resolve],
         CurrentTargets targets,
         AZone Stack
-        --AnAttributes atts
-        -- relevant attributes of the entity causing the trigger? i think this needs to happen at some point maybe
         )
 
 checktrigger :: Trigger ->System'()
@@ -557,22 +591,6 @@ playLand land = do
 assembleTriggerlist::([Trigger],Trigger)->[Trigger]
 assembleTriggerlist (triggerlist,trigger) = triggerlist ++ [trigger]
 
--- gatherpossibletriggers::(Entity,String)->System'[Trigger]
--- gatherpossibletriggers (ent,"Cast")= do
---     AnAttributes atts <- getComponent ent
---     let triggerlist = [SpellCast atts]
---     return triggerlist
--- gatherpossibletriggers (ent,"ETB")= do
---     AnAttributes atts<- getComponent ent
---     --add more attributes of the cast spell here?
---     let triggerlist = [PermanentETB atts]
---     return triggerlist
--- gatherpossibletriggers (_,_) = return []
---     --my default thinking here is just to throw a hundred if statements at a card, but that doesnt seem very Haskell
---     --ifs also dont exactly work as i want them to here hmm
--- --so instead of gatherpossibletriggers, 
-
-
 castCard :: Card->System' ()
 castCard card = do
     case card.possibleTargets of
@@ -582,7 +600,6 @@ castCard card = do
             paymana mc
             cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (entity : stackcards)
             cmap $ \ (TheHand, CardsinZone handcards)-> CardsinZone (delete card handcards)
-            --this isn't removing Counterspell or Vindicate from the hand for some reason...
             case card.onEvent of
                 []-> do return ()
                 [(WhenCast atts,Just thetargettype, action)] -> do
@@ -661,7 +678,7 @@ setmana :: Int->System'()
 setmana x = cmap $ \(CurrentMana _) -> CurrentMana x
 
 
-obtainInput :: Read a => String->SystemT World IO a --this might come back to bite me?
+obtainInput :: Read a => String->SystemT World IO a
 obtainInput prompt = do
     liftIO (putStrLn prompt)
     target<-liftIO (getLine)
@@ -671,17 +688,21 @@ obtainInput prompt = do
             obtainInput prompt
         Just x ->return x
 
-isitanAbility :: Entity->System' Bool
-isitanAbility ent = do
+filterstackSpells :: Entity->System' Bool
+filterstackSpells ent = do
     isabil<-exists ent (Proxy @IsAbility)
     return (not isabil)
-    
+
+filterstackAbilities :: Entity->System' Bool
+filterstackAbilities ent = do
+    isabil<-exists ent (Proxy @IsAbility)
+    return (isabil)
 
 
 findtarget :: TargetType->System'( [Entity])
 findtarget Spell= do
     ents<-collect $ \ (TheStack, EntitiesinZone entities) -> Just (entities)
-    spells<-filterM (\ent -> isitanAbility ent) (concat ents)
+    spells<-filterM (\ent -> filterstackSpells ent) (concat ents)
     return (spells)
 findtarget Permanent = do
     ents<-collect $ \ (TheBattlefield, EntitiesinZone entities) -> Just (entities)
@@ -692,9 +713,15 @@ findtarget CreaturePermanent = do
     return (creatures)
 findtarget _ = collect $ \ (TheStack) -> Just (0)
 
+isitHexproof :: Entity->System' Bool
+isitHexproof ent = do
+    hpcheck<-exists ent (Proxy @HasHexproof)
+    return (not hpcheck)
+
 choosetarget :: TargetType->System' Entity
 choosetarget (targetType) = do
     targets<- (findtarget (targetType))
+    nothptargets<-filterM (\tgt -> isitHexproof tgt) targets
     getUserChoice (targets) (\target -> do
             ACardName name <- getComponent target
             return name
@@ -730,8 +757,6 @@ deletethese targets list = foldr delete targets list
 
 sendcardstogy :: [Entity]->System'()
 sendcardstogy cards = do
-    --collect all entities on the battlefield and check them for rest in peace/like
-    --loop all entities and check death triggers here too
     cmap $ \ (TheGraveyard, EntitiesinZone gycards) -> EntitiesinZone (cards ++ gycards)
     forM_ cards $ \ (card) -> do
         AnOnEvent events<- getComponent card
@@ -750,12 +775,6 @@ sendcardstogy cards = do
         AnAttributes atts <- getComponent card
         let triggerlist = [PermanentLeaves atts]
         checkforTriggers (triggerlist)
-        -- cmapM $ \ (TheStack, EntitiesinZone stackcards)->
-        --         if null stackcards
-        --             then do displayGameState Open
-        --             else do displayGameState Closed
-        --creating a trigger here makes for infinite loops -- fix?
-    --catch triggers on PermanentDies?
     --this only exists because of rest in peace
 
 counterTargets :: Entity->System'()
@@ -777,11 +796,12 @@ destroyTargets card = do
         case cards of
             [] -> return ()
             _ -> do
-                --if not Indestructable `elem` card.Keywords
-                liftIO (print (cardtargets))
-                forM_ cardtargets $ \ (cardtarget)->do
-                    cmap $ \ (TheBattlefield, EntitiesinZone bfcards) -> EntitiesinZone (delete cardtarget bfcards)
-                    sendcardstogy [cardtarget]
+                isindes<-exists card (Proxy @HasIndestructible)
+                unless isindes $ do
+                        liftIO (print (cardtargets))
+                        forM_ cardtargets $ \ (cardtarget)->do
+                            cmap $ \ (TheBattlefield, EntitiesinZone bfcards) -> EntitiesinZone (delete cardtarget bfcards)
+                            sendcardstogy [cardtarget]
 
 
 resolvePermanent :: Entity->System'()
@@ -790,7 +810,6 @@ resolvePermanent permanent = do
     AZone az<-getComponent permanent
     cmap $ \ (TheBattlefield, EntitiesinZone bfcards) -> EntitiesinZone (permanent : bfcards)
     cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (delete permanent stackcards)
-    --this MIGHT not need to be here because i'm moving the removal of cards from the stack up the chain
     AnOnEvent events<- getComponent permanent
     forM_ events $ \(trigger,targets, action) ->
         case trigger of
@@ -830,22 +849,18 @@ resolveEnt :: Entity->CardType->System'()
 resolveEnt ent Creature = do resolvePermanent ent
 resolveEnt ent Artifact = do resolvePermanent ent
 resolveEnt ent Enchantment = do resolvePermanent ent
-resolveEnt ent Land = do resolvePermanent ent --TODO: SHOULD NOT HAPPEN!!! maybe an error message
+resolveEnt ent Land = do resolvePermanent ent
 resolveEnt ent Instant = do sendcardstogy [ent]
 resolveEnt ent Sorcery = do sendcardstogy [ent]
 
 
--- [(Entity,[(Trigger,Action)])]
+
 resolvingOnResolves :: [(Entity,[Action])] -> System'()
 resolvingOnResolves [] = parseaction (DoNothing,0)
 resolvingOnResolves ((entity,actions):tas) = do
     forM_ actions $ \action ->
         parseaction (action,entity)
-    --TODO: what to do with spells after they're resolved
-    --get the descriptor component and check it, depending on type the entity goes to different places. 
-    --permanent->battlefield, spell->graveyard, ability -> the ether
-    --this is causing issues with Abilities that don't have cardtypes. First thought is to make an ability ACardType for my purposes but thats not very accurate.
-    -- exists!! on IsAbility -> if statement that either paths below or to deleteentity
+
 
     isabil<-exists entity (Proxy @IsAbility)
     if isabil
@@ -857,64 +872,99 @@ resolvingOnResolves ((entity,actions):tas) = do
     cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (delete (head stackcards) stackcards)
 
     displayGameState Closed
--- resolvingOnResolves _ = parseaction (DoNothing,0)
+
 
 resolveFullStack :: [(Entity,[Action])] -> System'()
 resolveFullStack [] = return ()
 resolveFullStack ((entity,actions):tas) = do
-    --cmap $ \ (TheStack, EntitiesinZone stackcards) ->EntitiesinZone(tas)
     cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (delete (head stackcards) stackcards)
     forM_ actions $ \action ->
         parseaction (action,entity)
-    resolveEffect All --trying this rather than iterating resolveFullStack tas s.t. resolveFullStack can 
+    resolveEffect All  
     --pick up on new triggers being added in the process of resolution
 
 loseLife :: Int ->System'()
 loseLife x = do
     cmap $ \ (PlayerLP y)->PlayerLP (y-x)
 
+gainLife :: Int ->System'()
+gainLife x = do
+    cmap $ \ (PlayerLP y)->PlayerLP (y+x)
+
+
+tapEnt :: Entity->System'()
+tapEnt card = do
+    set card (IsTapped True)
+
+chooseDiscard :: Int ->System'()
+chooseDiscard 0 = return ()
+chooseDiscard x = do
+    cih<-cardsinhand
+    chosencard<-getUserChoice (cih) (\thiscard -> do
+            return thiscard.cardName
+        )
+    cmap $ \ (TheHand, CardsinZone handcards) -> CardsinZone (delete chosencard handcards)
+    cmap $ \ (TheGraveyard, CardsinZone gycards) -> CardsinZone (chosencard : gycards)
 
 doCost :: Cost->Entity->System'()
 doCost Tap card = do
-    set card (IsTapped True)
+    tapEnt card
 doCost (PayLife x) card = do
     loseLife x
+doCost (Discard x) card = do
+    chooseDiscard x
 doCost Free _ = return ()
 
 isitTapped :: Entity->System'(Bool)
 isitTapped ent = do
     IsTapped it<-getComponent ent
-    return (not it)        
+    return (not it)
 
-costExecutable :: Cost->Entity->System' Bool
-costExecutable cost ent = 
+costExecutableability :: Cost->Entity->System' Bool
+costExecutableability cost ent =
     case cost of
-        Tap -> do 
+        Tap -> do
             x<-isitTapped ent
             return x
-        PayLife x-> do 
+        PayLife x-> do
             lifetotal<-collect $ \ (PlayerLP life) -> Just (life)
             return (x<head lifetotal)
         Free->return True
+        Discard x -> do
+            cih<-cardsinhand
+            return (x>=length cih)
+        _->return False --(doesn't have a legal cost for an ability)
+
+costExecutablespell :: Cost->System' Bool
+costExecutablespell cost  =
+    case cost of
+        PayLife x-> do
+            lifetotal<-collect $ \ (PlayerLP life) -> Just (life)
+            return (x<head lifetotal)
+        Discard x -> do
+            cih<-cardsinhand
+            return (x>=length cih)
+        Free->return True
+        _->return False --(doesn't have a legal cost for a spell)
 
 legalTargets :: Maybe TargetType ->System' Bool
 legalTargets Nothing = return True
-legalTargets x = 
-    case x of 
+legalTargets x =
+    case x of
         Just y -> do
             newcards<-findtarget y
             if null newcards
                 then do return False
                 else do return True
 
-            
+
 
 filterabs :: (Cost, Maybe TargetType, Action, IsManaAbility)->(Entity->System' Bool)
 filterabs (cost,tgt,act,isman) ent = do
-    x<-costExecutable cost ent
-    if not x 
+    x<-costExecutableability cost ent
+    if not x
         then do return False
-        else do 
+        else do
             y<-legalTargets tgt
             if not y
                 then do return False
@@ -927,13 +977,11 @@ activateAbility card= do
     whichability<-getUserChoice (abilities) (\(cost,targettype, action,ismana) -> do
             return (show action)
         )
-    --how do i represent the different abilities in a print? give them a name or something idk? do i seriously need to add a description to each ability kill me
-    --alternatively i just go by numbers, straight through obtainInput like in the menu system
     let (cost,targets,action,ismana) = whichability
-    if ismana 
+    if ismana
         then do
             doCost cost card
-            parseaction (action,card) 
+            parseaction (action,card)
         else do
             case targets of
                 Nothing-> do
@@ -945,10 +993,7 @@ activateAbility card= do
                     effecttarget<-choosetarget (thistarget)
                     newability<-putabilityonstack action [effecttarget]
                     cmap $ \ (TheStack, EntitiesinZone stackcards) -> EntitiesinZone (newability : stackcards)
-        --surely it's easier to do the effect choice inside this function lol
 
-    --so currently this function is a bit weird, because you choose the entity before you choose the ability, meaning that 
-    --the 
 
 doesitActivate :: Entity->System' Bool
 doesitActivate ent = do
@@ -961,7 +1006,7 @@ canitActivate :: Entity -> System' Bool
 canitActivate ent = do
     IsTapped it<-getComponent ent
     return (not it)
-    --could do with reworking to make it make sense
+
 
 
 
@@ -985,10 +1030,9 @@ activatableAbilities Open= do
     if null stackeffs
         then do displayGameState Open
         else do displayGameState Closed
-    
+
 
 activatableAbilities Closed= do
-    --check sorcery speed abilities?
     entswithabs<-collect $ \ (TheBattlefield, EntitiesinZone entities) -> Just (entities)
     newents<-filterM doesitActivate (concat entswithabs)
     availableents<-filterM canitActivate (newents)
@@ -1004,39 +1048,55 @@ activatableAbilities Closed= do
         )
     activateAbility chosenent
     displayGameState Closed
-    --how to list the abilities?
+
 
 
 isitCastable :: Int -> (Card -> System' Bool)
 isitCastable currentMana card =
     if card.cardType == Land
         then return False
-        else 
-            case card.possibleTargets of
-                Nothing->return (card.manaCost <= currentMana)
-                Just x->do
-                    stuff <- findtarget x
-                    if null stuff
-                        then do return False
-                        else do return (card.manaCost <= currentMana)
+        else
+            case card.additcost of
+                Nothing->
+                    case card.possibleTargets of
+                        Nothing->return (card.manaCost <= currentMana)
+                        Just x->do
+                            stuff <- findtarget x
+                            if null stuff
+                                then do return False
+                                else do return (card.manaCost <= currentMana)
+                Just cost -> do
+                    truth <- costExecutablespell cost
+                    if truth
+                        then case card.possibleTargets of
+                            Nothing->return (card.manaCost <= currentMana)
+                            Just x->do
+                                stuff <- findtarget x
+                                if null stuff
+                                    then do return False
+                                    else do return (card.manaCost <= currentMana)
+                        else return False
 
--- >>> :t filter
--- filter :: (a -> Bool) -> [a] -> [a]
 
--- >>> :t isitCastable
--- isitCastable :: Int -> Card -> Bool
 
--- >>> :t isitCastable 5
--- isitCastable 5 :: Card -> Bool
+
+
+isitthisAtt :: Attribute->Attribute ->Bool
+isitthisAtt att att2=
+    if att==att2 then True else False
 
 isitInstant :: Card -> Bool
 isitInstant card =
     case card.cardType of
         Instant -> True
-        _->False
-            --(if ((Keywords _) `elem` card.attributes) && (Flash `elem` somelist) then True else False)
+        _->do
+            let atts = card.attributes
+            let keywords = filter (\att -> isitthisAtt (Keywords [Flash]) att) (atts)
+            if null keywords
+                then False
+                else True
 
---find a way to access somelist here?
+
 castableCards :: StateofGame->System'()
 castableCards Open = cmapM_ $ \(CurrentMana currentMana) -> do
     cih<-cardsinhand
@@ -1047,7 +1107,6 @@ castableCards Open = cmapM_ $ \(CurrentMana currentMana) -> do
             displayGameState Open
         else do
             return ()
-    --TODO: if newcih empty -> filter back to menu
     chosencard<-getUserChoice (newcih) (\thiscard -> do
             return thiscard.cardName
         )
@@ -1063,22 +1122,20 @@ castableCards Closed = cmapM_ $ \(CurrentMana currentMana) -> do
             displayGameState Closed
         else do
             return ()
-    --try to filter for flash as well? idk i might need a bespoke function
+
     chosencard<-getUserChoice (instantcih) (\thiscard -> do
             return thiscard.cardName
         )
     castCard chosencard
 
     displayGameState Closed
-    --for Closed check instant speed as well
 
---somehow gather Cards in the hand which have a manaCost that can be cast given the current manaPool and are not lands
+
 
 isentThisType :: CardType->Entity->System' Bool
 isentThisType atype ent = do
     ACardType ct <- getComponent ent
     return (ct==atype)
-    --may not be needed
 
 isitThisType :: CardType->Card->Bool
 isitThisType atype card =
@@ -1149,9 +1206,6 @@ displayGameState sog = do
 
 checkStateBased :: System'()
 checkStateBased = do
-    --check if any creatures have toughness 0, kill them
-    --check if any player is at 0 or less life
-    --check if a token is not on the battlefield
     cmapM $ \ (TheBattlefield, EntitiesinZone ents)-> do
         forM_ ents $ \ (ent) -> do
             ACardType ct<-getComponent ent
@@ -1161,9 +1215,11 @@ checkStateBased = do
                         case bt of
                             0->destroyTargets ent
                             _->return ()
+                        --check if any creatures have toughness 0, kill them
                 _->return ()
     cmapM $ \ (PlayerLP x)->do
         when (x<=0) $ endGame NoLife
+    --check if any player is at 0 or less life
 
 data GameEnd = Deckout | NoLife
 
@@ -1190,8 +1246,6 @@ nextTurn = do
 
 
 abilityorcast  :: StateofGame->System'()
---i think i want this to be able to take modal input? 
---ie have an 'instant speed' aborc that also lets you click 'resolve stack', or an 'open gamestate' aborc
 abilityorcast Open = do
     checkStateBased
     let acceptables = [(1::Integer),2,3,4]
@@ -1214,6 +1268,7 @@ abilityorcast Open = do
             liftIO (putStrLn "invalid option!")
             abilityorcast Open
 abilityorcast Closed = do
+    checkStateBased
     let acceptables = [(1::Integer),2,3,4]
     cih<-cardsinhand
     forM_ (zip [1 ..] cih) $ \(ix, thiscard) -> do
@@ -1234,52 +1289,3 @@ abilityorcast Closed = do
         else do
             liftIO (putStrLn "invalid option!")
             abilityorcast Closed
-
---need to rework resolveEffect somewhat 
-
-
--- getOnActivates :: Entity -> [(Cost,Action)]
--- getOnActivates card = 
---   let AnOnActivate abilities = get card
---    in abilities
-
--- activateEffect :: Entity->System'()
--- activateEffect card = do 
--- effects<-getOnActivates card
--- whicheffect <- obtainInput "which effect to use?"
--- make effects their own entity, use the 1... from up top to cycle through them
-
-
-
--- iterateTriggeractions [e,[(trigger,action)]:tas] = if trigger = onresolve: pass action into a parsing function which carries it out, then iterateTriggeractions tas
---i THINK i need to separate WhenCast and onresolve again, because they're triggered in entirely different circumstances, and it makes a generic parsing function really rough
---do this recursively? go through, try and resolve their onResolves
-
---we can clear entities by returning Nothing instead of a component adjustment
---but how exactly am i going to get that specific targeted entity? 
-
---the only place entities exist is stack/battlefield, gy doesnt exist. library/hand just store Cards. 
---resolveEffect !!
-
---all three of these effectively should function in sequence to update a card's position, wasn't sure how cmap works 
---(ie if i could resolve these in sequence with one cmap) 
---because the documentation seems shockingly vacant
--- putCardInPlace :: Card->Zone->Zone-> System'()
--- putCardInPlace thisid zone newzone = cmap $ \(AnId thisid, AZone zone) -> AZone newzone
-
---pretty sure this ^ is just a setup command now
-
--- addCardToPlace :: Card->Zone->System'()
--- addCardToPlace card zone = cmapIf (\(WhichZone thezone)->thezone==zone) 
---                                 (\(WhichZone thezone, CardsinZone cards)->CardsinZone (appendcard card cards))
-
--- removeCardFromPlace :: Card->Zone->System'()
--- removeCardFromPlace card zone = cmapIf (\(WhichZone thezone)->thezone==zone) 
---                                 (\(WhichZone thezone, CardsinZone cards)->CardsinZone (removeCard card cards))
-
-
-
--- gameChecks :: System' ()
--- gameChecks = do
-
-
